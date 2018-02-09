@@ -12,9 +12,43 @@
 // - add webserver that controls relais
 // - add alexa belkin simulator
 
-void setup() {
- 
+// LED
+const int ledPin = 2;
+
+// button
+const int btnPin = 0; // also used to enable flashing mode
+
+// relais
+
+
+// Methods
+void ledBlinkTest();
+
+void setup()
+{
+    // Setup pins
+    pinMode(ledPin, OUTPUT);
+    pinMode(btnPin, INPUT);
+
+    // Turn off led
+    digitalWrite(ledPin, LOW);
+
+    ledBlinkTest();
 }
 
-void loop() {
+void loop()
+{
+
+}
+
+void ledBlinkTest(){
+    int blinkSpeed = 250;
+
+    // blink 5 times
+    for(int i=0; i<5;++i){
+        delay(blinkSpeed);
+        digitalWrite(ledPin, HIGH);
+        delay(blinkSpeed);
+        digitalWrite(ledPin, LOW);
+    }
 }
