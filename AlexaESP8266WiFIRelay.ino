@@ -6,8 +6,8 @@
 
 // TODO:
 // - add relay control - DONE
-// - add control led
-// - add button that controls relay
+// - add control led - DONE
+// - add button that controls relay - DONE
 // - add wifimanager
 // - add spdiff settings store
 // - add mqtt client
@@ -18,7 +18,15 @@
 const int ledPin = 2;
 
 // button
-const int btnPin = 0; // also used to enable flashing mode
+#define PUSH 0x1
+#define SWITCH 0x0
+
+const int btnPin = 0;               // also used to enable flashing mode
+const int btnType = SWITCH;         // push or switch
+int lastBtnState = HIGH;            // because the pins are pulled high
+int btnState;                       // the current reading from the input pin
+unsigned long lastDebounceTime = 0; // the last time the output pin was toggled
+unsigned long debounceDelay = 50;   // the debounce time; increase if the output flickers
 
 // relay
 byte relCmdON[] = {0xA0, 0x01, 0x01, 0xA2};  // Hex command to send to serial for open relay
@@ -30,8 +38,11 @@ int relayState = RELAY_OFF;
 
 // Methods
 void ledBlinkTest();
+void relayToggleTest();
 void turnRelayOn();
 void turnRelayOff();
+void buttonLoop();
+void toggleRelay();
 
 void setup()
 {
@@ -55,6 +66,65 @@ void setup()
 
 void loop()
 {
+    buttonLoop();
+}
+
+void buttonLoop()
+{
+    int currentBtnState = digitalRead(btnPin);
+
+    // If the switch changed, due to noise or pressing:
+    if (currentBtnState != lastBtnState)
+    {
+        // reset the debouncing timer
+        lastDebounceTime = millis();
+    }
+
+    if ((millis() - lastDebounceTime) > debounceDelay)
+    {
+        // whatever the currentBtnState is at, it's been there for longer than the debounce
+        // delay, so take it as the actual current state:
+
+        // if the button state has changed:
+        if (currentBtnState != btnState)
+        {
+            btnState = currentBtnState;
+
+            if (btnType == SWITCH)
+            {
+                if (btnState == LOW)
+                {
+                    turnRelayOn();
+                }
+                else
+                {
+                    turnRelayOff();
+                }
+            }
+            else // PUSH
+            {
+                // only toggle the relay if the new button state is HIGH
+                if (btnState == LOW)
+                {
+                    toggleRelay();
+                }
+            }
+        }
+    }
+
+    lastBtnState = currentBtnState;
+}
+
+void toggleRelay()
+{
+    if (relayState == RELAY_OFF)
+    {
+        turnRelayOn();
+    }
+    else
+    {
+        turnRelayOff();
+    }
 }
 
 void ledBlinkTest()
