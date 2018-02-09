@@ -5,7 +5,7 @@
  * **/
 
 // TODO:
-// - add relay control
+// - add relay control - DONE
 // - add control led
 // - add button that controls relay
 // - add wifimanager
@@ -45,8 +45,8 @@ void setup()
     pinMode(ledPin, OUTPUT);
     pinMode(btnPin, INPUT);
 
-    // Turn off led
-    digitalWrite(ledPin, LOW);
+    // Turn off
+    turnRelayOff();
 
     // do tests
     ledBlinkTest();
@@ -74,12 +74,14 @@ void ledBlinkTest()
 void turnRelayOn()
 {
     Serial.write(relCmdON, sizeof(relCmdON)); // turns the relay ON
+    digitalWrite(ledPin, HIGH);
     relayState = RELAY_ON;
 }
 
 void turnRelayOff()
 {
     Serial.write(relCmdOFF, sizeof(relCmdOFF)); // turns the relay OFF
+    digitalWrite(ledPin, LOW);
     relayState = RELAY_OFF;
 }
 
