@@ -1,15 +1,17 @@
 /***
  * by Andreas Taske (andreas@taske.de) 2018
+ * 
+ * used exp8266 with wifi relay: 
  * **/
 
 // TODO:
-// - add relais control
+// - add relay control
 // - add control led
-// - add button that controls relais
+// - add button that controls relay
 // - add wifimanager
 // - add spdiff settings store
 // - add mqtt client
-// - add webserver that controls relais
+// - add webserver that controls relay
 // - add alexa belkin simulator
 
 // LED
@@ -18,7 +20,10 @@ const int ledPin = 2;
 // button
 const int btnPin = 0; // also used to enable flashing mode
 
-// relais
+// relay
+
+
+
 
 
 // Methods
@@ -26,6 +31,9 @@ void ledBlinkTest();
 
 void setup()
 {
+    // serial settings
+    Serial.begin(9600);  // 9600 because the relais module communicates with this baud rate
+
     // Setup pins
     pinMode(ledPin, OUTPUT);
     pinMode(btnPin, INPUT);
