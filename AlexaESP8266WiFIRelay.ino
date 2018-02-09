@@ -32,7 +32,7 @@ void ledBlinkTest();
 void setup()
 {
     // serial settings
-    Serial.begin(9600);  // 9600 because the relais module communicates with this baud rate
+    Serial.begin(9600);  // 9600 because the relay module communicates with this baud rate
 
     // Setup pins
     pinMode(ledPin, OUTPUT);
