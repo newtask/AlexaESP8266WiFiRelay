@@ -20,9 +20,10 @@ const int ledPin = 2;
 // button
 #define PUSH 0x1
 #define SWITCH 0x0
+#define TOGGLE_SWITCH 0x2
 
 const int btnPin = 0;               // also used to enable flashing mode
-const int btnType = SWITCH;         // push or switch
+const int btnType = TOGGLE_SWITCH;  // PUSH, SWITCH or TOGGLE_SWITCH
 int lastBtnState = HIGH;            // because the pins are pulled high
 int btnState;                       // the current reading from the input pin
 unsigned long lastDebounceTime = 0; // the last time the output pin was toggled
@@ -101,13 +102,17 @@ void buttonLoop()
                     turnRelayOff();
                 }
             }
-            else // PUSH
+            else if (btnType == PUSH)
             {
                 // only toggle the relay if the new button state is HIGH
                 if (btnState == LOW)
                 {
                     toggleRelay();
                 }
+            }
+            else // TOGGLE_SWITCH
+            {
+                toggleRelay();
             }
         }
     }
