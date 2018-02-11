@@ -9,7 +9,7 @@
 // - add control led - DONE
 // - add button that controls relay - DONE
 // - add wifimanager - DONE
-// - add spdiff settings store -DONE
+// - add spdiff settings store - DONE
 // - add mqtt client
 // - add webserver that controls relay
 // - add alexa belkin simulator
@@ -23,6 +23,7 @@
 #include <EEPROM.h>
 #include <WiFiManager.h> //https://github.com/tzapu/WiFiManager
 #include <ArduinoJson.h> //https://github.com/bblanchon/ArduinoJson
+#include <PubSubClient.h>
 
 // Debugging
 boolean debug = true;
@@ -61,6 +62,11 @@ char configFilename[14] = "/config.json";
 // mqtt
 char cfg_mqtt_host[40] = "broker.mqttdashboard.com";
 char cfg_mqtt_port[6] = "1883";
+const char *inTopic = "controlRelay";
+const char *outTopic = "relayStatus";
+
+WiFiClient wifiClient;
+PubSubClient mqttClient(wifiClient);
 
 // spdiff
 bool shouldSaveConfig = false; // flag for saving data
@@ -71,10 +77,14 @@ void relayToggleTest();
 void turnRelayOn();
 void turnRelayOff();
 void buttonLoop();
+void mqttLoop();
+void reconnectMqttClient();
 void toggleRelay();
 void setupWifi();
+void setupMqtt();
 void reset();
 void wifiSaveConfigCallback();
+void mqttCallback(char *topic, byte *payload, unsigned int length);
 void println();
 void readConfig();
 void saveConfig();
@@ -85,7 +95,7 @@ void setup()
     Serial.begin(9600); // 9600 because the relay module communicates with this baud rate
 
     // FOR DEBUG: wait serial monitor to settle down
-    delay(2000);
+    delay(1000);
 
     // Setup pins
     pinMode(ledPin, OUTPUT);
@@ -103,11 +113,122 @@ void setup()
 
     // wifi
     setupWifi(false);
+
+    // mqtt
+    setupMqtt();
 }
 
 void loop()
 {
     buttonLoop();
+    mqttLoop();
+}
+
+void mqttLoop()
+{
+    if (!mqttClient.connected())
+    {
+        reconnectMqttClient();
+    }
+    mqttClient.loop();
+}
+
+void reconnectMqttClient()
+{
+    // Loop until we're reconnected
+    while (!mqttClient.connected())
+    {
+        if (debug)
+        {
+            Serial.print("Attempting MQTT connection...");
+        }
+        // Create a random client ID
+        String clientId = "ESP8266Client-";
+        clientId += String(random(0xffff), HEX);
+        // Attempt to connect
+        if (mqttClient.connect(clientId.c_str()))
+        {
+            if (debug)
+            {
+                Serial.println("connected");
+            }
+            // Once connected, publish an announcement...
+            mqttClient.publish(outTopic, "UNKNOWN");
+            // ... and resubscribe
+            mqttClient.subscribe(inTopic);
+        }
+        else
+        {
+            if (debug)
+            {
+                Serial.print("failed, rc=");
+                Serial.print(mqttClient.state());
+                Serial.println(" try again in 5 seconds");
+            }
+            // Wait 5 seconds before retrying
+            delay(5000);
+        }
+    }
+}
+
+void setupMqtt()
+{
+    String port_str(cfg_mqtt_port);
+    int port = port_str.toInt();
+    if (debug)
+    {
+
+        Serial.print("mqtt server");
+        Serial.println(cfg_mqtt_host);
+        Serial.print("mqtt port");
+        Serial.println(port);
+    }
+    mqttClient.setServer(cfg_mqtt_host, port);
+    mqttClient.setCallback(mqttCallback);
+}
+
+void mqttCallback(char *topic, byte *payload, unsigned int length)
+{
+    if (debug)
+    {
+        Serial.print("Message arrived [");
+        Serial.print(topic);
+        Serial.print("] ");
+
+        for (int i = 0; i < length; i++)
+        {
+            Serial.print((char)payload[i]);
+        }
+
+        Serial.println();
+    }
+
+    // TODO better conversion
+    String payloadStr = "";
+    for (int i = 0; i < length; i++)
+    {
+        payloadStr += (char)payload[i];
+    }
+
+    Serial.println(payloadStr);
+    const char* p = payloadStr.c_str() ;
+    
+    if (strcmp(topic, inTopic) == 0)
+    {
+        Serial.println("Found in topic");
+        if (strcmp(p, "ON") == 0 || strcmp(p, "1") == 0)
+        {
+            turnRelayOn();
+        }
+        else if (strcmp(p, "OFF") == 0 || strcmp(p, "0") == 0)
+        {
+            turnRelayOff();
+        }
+        else if (strcmp(p, "TOGGLE") == 0 || strcmp(p, "2") == 0)
+        {
+            toggleRelay();
+        }
+    }
 }
 
 void println(const char c[])
@@ -373,7 +494,7 @@ void ledBlinkTest()
     int speed = 250;
 
     // blink 5 times
-    for (int i = 0; i < 5; ++i)
+    for (int i = 0; i < 1; ++i)
     {
         delay(speed);
         digitalWrite(ledPin, HIGH);
@@ -387,6 +508,14 @@ void turnRelayOn()
     Serial.write(relCmdON, sizeof(relCmdON)); // turns the relay ON
     digitalWrite(ledPin, HIGH);
     relayState = RELAY_ON;
+
+    if (debug)
+    {
+        Serial.println("RELAY_ON");
+    }
+
+    // send status via mqtt
+    mqttClient.publish(outTopic, "ON");
 }
 
 void turnRelayOff()
@@ -394,6 +523,14 @@ void turnRelayOff()
     Serial.write(relCmdOFF, sizeof(relCmdOFF)); // turns the relay OFF
     digitalWrite(ledPin, LOW);
     relayState = RELAY_OFF;
+
+    if (debug)
+    {
+        Serial.println("RELAY_OFF");
+    }
+
+    // send status via mqtt
+    mqttClient.publish(outTopic, "OFF");
 }
 
 void relayToggleTest()
@@ -401,7 +538,7 @@ void relayToggleTest()
     int speed = 1000;
 
     // blink 5 times
-    for (int i = 0; i < 5; ++i)
+    for (int i = 0; i < 1; ++i)
     {
         delay(speed);
         turnRelayOn();
