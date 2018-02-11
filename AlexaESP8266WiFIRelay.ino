@@ -10,8 +10,8 @@
 // - add button that controls relay - DONE
 // - add wifimanager - DONE
 // - add spdiff settings store - DONE
-// - add mqtt client
-// - add webserver that controls relay
+// - add mqtt client - DONE
+// - add webServer that controls relay
 // - add alexa belkin simulator
 // - add hue-bridge support
 
@@ -68,6 +68,10 @@ const char *outTopic = "relayStatus";
 WiFiClient wifiClient;
 PubSubClient mqttClient(wifiClient);
 
+// webServer
+ESP8266WebServer webServer(80);
+bool serverIsRunning = false;
+
 // spdiff
 bool shouldSaveConfig = false; // flag for saving data
 
@@ -78,16 +82,19 @@ void turnRelayOn();
 void turnRelayOff();
 void buttonLoop();
 void mqttLoop();
+void webServerLoop();
 void reconnectMqttClient();
 void toggleRelay();
 void setupWifi();
 void setupMqtt();
+void setupWebServer();
 void reset();
 void wifiSaveConfigCallback();
 void mqttCallback(char *topic, byte *payload, unsigned int length);
 void println();
 void readConfig();
 void saveConfig();
+String getRelayState();
 
 void setup()
 {
@@ -114,6 +121,9 @@ void setup()
     // wifi
     setupWifi(false);
 
+    // webServer
+    setupWebServer();
+
     // mqtt
     setupMqtt();
 }
@@ -122,6 +132,7 @@ void loop()
 {
     buttonLoop();
     mqttLoop();
+    webServerLoop();
 }
 
 void mqttLoop()
@@ -131,6 +142,100 @@ void mqttLoop()
         reconnectMqttClient();
     }
     mqttClient.loop();
+}
+
+void webServerLoop()
+{
+    if (serverIsRunning)
+    {
+        webServer.handleClient();
+    }
+}
+
+void handleRoot()
+{
+    webServer.send(200, "text/plain", "Server is running");
+}
+
+void handleNotFound()
+{
+    String message = "File Not Found\n\n";
+    message += "URI: ";
+    message += webServer.uri();
+    message += "\nMethod: ";
+    message += (webServer.method() == HTTP_GET) ? "GET" : "POST";
+    message += "\nArguments: ";
+    message += webServer.args();
+    message += "\n";
+    for (uint8_t i = 0; i < webServer.args(); i++)
+    {
+        message += " " + webServer.argName(i) + ": " + webServer.arg(i) + "\n";
+    }
+    webServer.send(404, "text/plain", message);
+}
+
+void setupWebServer()
+{
+    webServer.on("/", handleRoot);
+
+    webServer.on("/relay/on", []() {
+        turnRelayOn();
+        webServer.send(200, "text/plain", "relay is on");
+    });
+    webServer.on("/relay/off", []() {
+        turnRelayOff();
+        webServer.send(200, "text/plain", "relay is off");
+    });
+    webServer.on("/relay/toggle", []() {
+        toggleRelay();
+        webServer.send(200, "text/plain", getRelayState());
+    });
+    webServer.on("/relay/state", []() {
+        webServer.send(200, "text/plain", getRelayState());
+    });
+
+    webServer.onNotFound(handleNotFound);
+}
+
+String getRelayState()
+{
+    if (relayState == RELAY_ON)
+    {
+        return "relay is on";
+    }
+    else
+    {
+        return "relay is off";
+    }
+}
+
+void stopWebServer()
+{
+    if (!serverIsRunning)
+    {
+        return;
+    }
+
+    webServer.stop();
+
+    serverIsRunning = false;
+
+    if (debug)
+    {
+        Serial.println("HTTP webServer stopped");
+    }
+}
+
+void startWebServer()
+{
+    webServer.begin();
+
+    serverIsRunning = true;
+
+    if (debug)
+    {
+        Serial.println("HTTP webServer started");
+    }
 }
 
 void reconnectMqttClient()
@@ -211,8 +316,8 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     }
 
     Serial.println(payloadStr);
-    const char* p = payloadStr.c_str() ;
-    
+    const char *p = payloadStr.c_str();
+
     if (strcmp(topic, inTopic) == 0)
     {
         Serial.println("Found in topic");
@@ -317,6 +422,9 @@ void saveConfig()
 
 void setupWifi(boolean useConfigPortal)
 {
+    // we cannot run two web server at the same port. so stop web server
+    stopWebServer();
+
     // Local intialization. Once its business is done, there is no need to keep it around
     WiFiManager wifiManager;
     //set config save notify callback
@@ -341,6 +449,7 @@ void setupWifi(boolean useConfigPortal)
     if (useConfigPortal)
     {
         println("Entering config portal");
+
         wifiManager.startConfigPortal(cfg_ap_name); // TODO check why old ap name is used instead of cfg ap name
     }
     else
@@ -372,6 +481,9 @@ void setupWifi(boolean useConfigPortal)
 
         saveConfig();
     }
+
+    // All done start webServer
+    startWebServer();
 }
 
 void wifiSaveConfigCallback()
