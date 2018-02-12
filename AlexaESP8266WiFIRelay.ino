@@ -14,6 +14,7 @@
 // - add webServer that controls relay
 // - add alexa belkin simulator
 // - add hue-bridge support
+// - save error to log file and display it in the webserver
 
 // includes
 #include <FS.h>
@@ -64,6 +65,8 @@ char cfg_mqtt_host[40] = "broker.mqttdashboard.com";
 char cfg_mqtt_port[6] = "1883";
 const char *inTopic = "controlRelay";
 const char *outTopic = "relayStatus";
+const int maxMqttRetries = 5;
+int mqttRetry = 0;
 
 WiFiClient wifiClient;
 PubSubClient mqttClient(wifiClient);
@@ -123,9 +126,6 @@ void setup()
 
     // webServer
     setupWebServer();
-
-    // mqtt
-    setupMqtt();
 }
 
 void loop()
@@ -137,6 +137,7 @@ void loop()
 
 void mqttLoop()
 {
+
     if (!mqttClient.connected())
     {
         reconnectMqttClient();
@@ -241,15 +242,19 @@ void startWebServer()
 void reconnectMqttClient()
 {
     // Loop until we're reconnected
-    while (!mqttClient.connected())
+    while (!mqttClient.connected() && mqttRetry < maxMqttRetries)
     {
+        mqttRetry++;
+
         if (debug)
         {
             Serial.print("Attempting MQTT connection...");
         }
+
         // Create a random client ID
         String clientId = "ESP8266Client-";
         clientId += String(random(0xffff), HEX);
+        
         // Attempt to connect
         if (mqttClient.connect(clientId.c_str()))
         {
@@ -261,23 +266,42 @@ void reconnectMqttClient()
             mqttClient.publish(outTopic, "UNKNOWN");
             // ... and resubscribe
             mqttClient.subscribe(inTopic);
+
+            mqttRetry = 0;
         }
         else
         {
-            if (debug)
+
+            if (mqttRetry >= maxMqttRetries)
             {
-                Serial.print("failed, rc=");
-                Serial.print(mqttClient.state());
-                Serial.println(" try again in 5 seconds");
+                if (debug)
+                {
+                    Serial.println("mqtt connection failed. Check config.");
+                    Serial.print(cfg_mqtt_host);
+                    Serial.print(":");
+                    Serial.println(cfg_mqtt_port);
+                }
             }
-            // Wait 5 seconds before retrying
-            delay(5000);
+            else
+            {
+                if (debug)
+                {
+                    Serial.print("failed, rc=");
+                    Serial.print(mqttClient.state());
+                    Serial.println(" try again in 5 seconds");
+                }
+
+                // Wait 5 seconds before retrying
+                delay(5000);
+            }
         }
     }
 }
 
 void setupMqtt()
 {
+    mqttRetry = 0;
+
     String port_str(cfg_mqtt_port);
     int port = port_str.toInt();
     if (debug)
@@ -422,7 +446,8 @@ void saveConfig()
 
 void setupWifi(boolean useConfigPortal)
 {
-    // we cannot run two web server at the same port. so stop web server
+    // stop services
+    mqttClient.disconnect();
     stopWebServer();
 
     // Local intialization. Once its business is done, there is no need to keep it around
@@ -482,8 +507,9 @@ void setupWifi(boolean useConfigPortal)
         saveConfig();
     }
 
-    // All done start webServer
+    // All done start services
     startWebServer();
+    setupMqtt();
 }
 
 void wifiSaveConfigCallback()
