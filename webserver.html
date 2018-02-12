@@ -1,0 +1,22 @@
+<style>
+body{margin: auto; width: 300px; text-align: center; font-family: Verdana;padding: 2em;} 
+button{width: 100%;margin-bottom: 1em; margin: 0.4em;padding: 0.4em; }
+</style>
+<script>
+function load(page){
+var xhttp = new XMLHttpRequest();
+  xhttp.onreadystatechange = function() {
+    if (this.readyState == 4 && this.status == 200) {
+     document.getElementById("result").innerHTML = this.responseText;
+    } else {
+	}
+  };
+  xhttp.open("GET", page, true);
+  xhttp.send();
+};
+
+</script>
+<body onload="load('relay/state')">
+<h2>WiFi Relay control</h2>
+<div><button onclick="load('relay/on')">Turn on</button> <button onclick="load('relay/off')">Turn off</button> <button onclick="load('relay/toggle')">Toggle</button> <button onclick="load('esp/restart')">Restart</button><p>State: <span id="result"></span></p></div>
+

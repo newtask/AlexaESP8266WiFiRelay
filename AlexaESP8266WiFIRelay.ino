@@ -11,7 +11,7 @@
 // - add wifimanager - DONE
 // - add spdiff settings store - DONE
 // - add mqtt client - DONE
-// - add webServer that controls relay
+// - add webServer that controls relay - DONE
 // - add alexa belkin simulator
 // - add hue-bridge support
 // - save error to log file and display it in the webserver
@@ -98,6 +98,7 @@ void println();
 void readConfig();
 void saveConfig();
 String getRelayState();
+String restartEsp();
 
 void setup()
 {
@@ -155,7 +156,7 @@ void webServerLoop()
 
 void handleRoot()
 {
-    webServer.send(200, "text/plain", "Server is running");
+    webServer.send(200, "text/html", "<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\"><style>body{ margin: auto;width: calc(100% - 4em);text-align: center;font-family: Verdana;padding: 2em;} button{width: calc(100% - 0.8em);margin-bottom: 1em; margin: 0.4em;padding: 0.4em; }</style><script>function load(page){var xhttp = new XMLHttpRequest(); xhttp.onreadystatechange = function() {if (this.readyState == 4 && this.status == 200) { document.getElementById(\"result\").innerHTML = this.responseText;} else {} }; xhttp.open(\"GET\", page, true); xhttp.send();};function init(){load('relay/state');setInterval(function(){load('relay/state');}, 5000);}</script></head><body onload=\"init()\"><h2>WiFi Relay control</h2><div><button onclick=\"load('relay/on')\">Turn on</button> <button onclick=\"load('relay/off')\">Turn off</button> <button onclick=\"load('relay/toggle')\">Toggle</button> <hr><button onclick=\"load('relay/state')\">Refresh</button><button onclick=\"load('esp/restart')\">Restart</button><p>State: <span id=\"result\"></span></p></div>");
 }
 
 void handleNotFound()
@@ -193,6 +194,9 @@ void setupWebServer()
     });
     webServer.on("/relay/state", []() {
         webServer.send(200, "text/plain", getRelayState());
+    });
+    webServer.on("/esp/restart", []() {
+        webServer.send(200, "text/plain", restartEsp());
     });
 
     webServer.onNotFound(handleNotFound);
@@ -254,7 +258,7 @@ void reconnectMqttClient()
         // Create a random client ID
         String clientId = "ESP8266Client-";
         clientId += String(random(0xffff), HEX);
-        
+
         // Attempt to connect
         if (mqttClient.connect(clientId.c_str()))
         {
@@ -485,10 +489,7 @@ void setupWifi(boolean useConfigPortal)
             delay(3000);
 
             //reset whole device and try again, or maybe put it to deep sleep
-            ESP.reset();
-
-            // restart after 5 seconds
-            delay(5000);
+            restartEsp();
         }
     }
 
@@ -510,6 +511,17 @@ void setupWifi(boolean useConfigPortal)
     // All done start services
     startWebServer();
     setupMqtt();
+}
+
+String restartEsp()
+{
+    // restart esp
+    ESP.reset();
+
+    // restart after x seconds
+    delay(5000);
+
+    return "ESP restarts";
 }
 
 void wifiSaveConfigCallback()
