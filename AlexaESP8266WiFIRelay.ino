@@ -12,19 +12,24 @@
 // - add spdiff settings store - DONE
 // - add mqtt client - DONE
 // - add webServer that controls relay - DONE
-// - add alexa belkin simulator
+// - add alexa belkin simulator - DONE
 // - add hue-bridge support
 // - save error to log file and display it in the webserver
 
 // includes
 #include <FS.h>
-#include <ESP8266WiFi.h> //https://github.com/esp8266/Arduino
+#include <ESP8266WiFi.h> // https://github.com/esp8266/Arduino
 #include <DNSServer.h>
 #include <ESP8266WebServer.h>
 #include <EEPROM.h>
-#include <WiFiManager.h> //https://github.com/tzapu/WiFiManager
-#include <ArduinoJson.h> //https://github.com/bblanchon/ArduinoJson
+#include <WiFiManager.h> // https://github.com/tzapu/WiFiManager
+#include <ArduinoJson.h> // https://github.com/bblanchon/ArduinoJson
 #include <PubSubClient.h>
+#include <WiFiUdp.h>
+#include <functional>
+#include "switch.h" // https://github.com/kakopappa/arduino-esp8266-alexa-multiple-wemo-switch
+#include "UpnpBroadcastResponder.h"
+#include "CallbackFunction.h"
 
 // Debugging
 boolean debug = true;
@@ -78,11 +83,16 @@ bool serverIsRunning = false;
 // spdiff
 bool shouldSaveConfig = false; // flag for saving data
 
+// wemos belkin simulator
+UpnpBroadcastResponder upnpBroadcastResponder;
+Switch *wemosSwitch = NULL;
+char cfg_wemos_name[20] = "Deckenlampe"; // rename
+
 // Methods
 void ledBlinkTest();
 void relayToggleTest();
-void turnRelayOn();
-void turnRelayOff();
+bool turnRelayOn();
+bool turnRelayOff();
 void buttonLoop();
 void mqttLoop();
 void webServerLoop();
@@ -90,6 +100,7 @@ void reconnectMqttClient();
 void toggleRelay();
 void setupWifi();
 void setupMqtt();
+void setupWemos();
 void setupWebServer();
 void reset();
 void wifiSaveConfigCallback();
@@ -134,6 +145,25 @@ void loop()
     buttonLoop();
     mqttLoop();
     webServerLoop();
+    wemosLoop();
+}
+
+void setupWemos()
+{
+    upnpBroadcastResponder.beginUdpMulticast();
+
+    // Define your switches here. Max 10
+    // Format: Alexa invocation name, local port no, on callback, off callback
+    wemosSwitch = new Switch(cfg_wemos_name, 8080, turnRelayOn, turnRelayOff);
+
+    println("Adding switches upnp broadcast responder");
+    upnpBroadcastResponder.addDevice(*wemosSwitch);
+}
+
+void wemosLoop()
+{
+    upnpBroadcastResponder.serverLoop();
+    wemosSwitch->serverLoop();
 }
 
 void mqttLoop()
@@ -509,8 +539,15 @@ void setupWifi(boolean useConfigPortal)
     }
 
     // All done start services
+
+    // webserver
     startWebServer();
+
+    // mqtt
     setupMqtt();
+
+    // wemos
+    setupWemos();
 }
 
 String restartEsp()
@@ -653,7 +690,7 @@ void ledBlinkTest()
     }
 }
 
-void turnRelayOn()
+bool turnRelayOn()
 {
     Serial.write(relCmdON, sizeof(relCmdON)); // turns the relay ON
     digitalWrite(ledPin, HIGH);
@@ -666,9 +703,18 @@ void turnRelayOn()
 
     // send status via mqtt
     mqttClient.publish(outTopic, "ON");
+
+    // set wemos status
+    if (wemosSwitch != NULL)
+    {
+        wemosSwitch->setSwitchStatus(true);
+    }
+
+    // return value for wemos
+    return true;
 }
 
-void turnRelayOff()
+bool turnRelayOff()
 {
     Serial.write(relCmdOFF, sizeof(relCmdOFF)); // turns the relay OFF
     digitalWrite(ledPin, LOW);
@@ -681,6 +727,15 @@ void turnRelayOff()
 
     // send status via mqtt
     mqttClient.publish(outTopic, "OFF");
+
+    // set wemos status
+    if (wemosSwitch != NULL)
+    {
+        wemosSwitch->setSwitchStatus(false);
+    }
+
+    // return value for wemos
+    return false;
 }
 
 void relayToggleTest()
