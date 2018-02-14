@@ -39,6 +39,20 @@ void Switch::serverLoop()
   }
 }
 
+void Switch::stop(){
+  if(server != NULL){
+    server->stop();
+    delete server;
+    server = NULL;
+  }
+}
+
+void Switch::start(){
+  if(server == NULL){
+    startWebServer();
+  }
+}
+
 void Switch::startWebServer()
 {
   server = new ESP8266WebServer(localPort);

@@ -34,6 +34,9 @@
 // Debugging
 boolean debug = true;
 
+// startup
+bool initialSetup = true;
+
 // LED
 const int ledPin = 2;
 
@@ -84,7 +87,7 @@ bool serverIsRunning = false;
 bool shouldSaveConfig = false; // flag for saving data
 
 // wemos belkin simulator
-UpnpBroadcastResponder upnpBroadcastResponder;
+UpnpBroadcastResponder *upnpBroadcastResponder = NULL;
 Switch *wemosSwitch = NULL;
 char cfg_wemos_name[20] = "Deckenlampe"; // rename
 
@@ -134,7 +137,7 @@ void setup()
     readConfig();
 
     // wifi
-    setupWifi(false);
+    setupWifi(initialSetup);
 
     // webServer
     setupWebServer();
@@ -150,19 +153,20 @@ void loop()
 
 void setupWemos()
 {
-    upnpBroadcastResponder.beginUdpMulticast();
+    upnpBroadcastResponder = new UpnpBroadcastResponder();
+    upnpBroadcastResponder->beginUdpMulticast();
 
     // Define your switches here. Max 10
     // Format: Alexa invocation name, local port no, on callback, off callback
     wemosSwitch = new Switch(cfg_wemos_name, 8080, turnRelayOn, turnRelayOff);
 
     println("Adding switches upnp broadcast responder");
-    upnpBroadcastResponder.addDevice(*wemosSwitch);
+    upnpBroadcastResponder->addDevice(*wemosSwitch);
 }
 
 void wemosLoop()
 {
-    upnpBroadcastResponder.serverLoop();
+    upnpBroadcastResponder->serverLoop();
     wemosSwitch->serverLoop();
 }
 
@@ -404,6 +408,8 @@ void println(const char c[])
 
 void readConfig()
 {
+    bool success = false;
+
     if (SPIFFS.begin())
     {
         if (SPIFFS.exists(configFilename))
@@ -433,10 +439,19 @@ void readConfig()
                 if (json.success())
                 {
                     println("\nparsed json");
-
-                    strcpy(cfg_mqtt_host, json["mqtt_host"]);
-                    strcpy(cfg_mqtt_port, json["mqtt_port"]);
-                    strcpy(cfg_ap_name, json["ap_name"]);
+                    if (!json.containsKey("mqtt_host") || !json.containsKey("mqtt_port") || !json.containsKey("ap_name") || !json.containsKey("wemos_name"))
+                    {
+                        success = false;
+                        println("One key is missing in the config file.");
+                    }
+                    else
+                    {
+                        strcpy(cfg_mqtt_host, json["mqtt_host"]);
+                        strcpy(cfg_mqtt_port, json["mqtt_port"]);
+                        strcpy(cfg_ap_name, json["ap_name"]);
+                        strcpy(cfg_wemos_name, json["wemos_name"]);
+                        success = true;
+                    }
                 }
                 else
                 {
@@ -449,6 +464,8 @@ void readConfig()
     {
         println("Failed to mount FS. Did you flash with the correct flash size? E.g. 1M (128k SPIFFS)");
     }
+
+    initialSetup = !success;
 }
 
 void saveConfig()
@@ -462,6 +479,7 @@ void saveConfig()
     json["mqtt_host"] = cfg_mqtt_host;
     json["mqtt_port"] = cfg_mqtt_port;
     json["ap_name"] = cfg_ap_name;
+    json["wemos_name"] = cfg_wemos_name;
 
     File configFile = SPIFFS.open("/config.json", "w");
     if (!configFile)
@@ -484,6 +502,19 @@ void setupWifi(boolean useConfigPortal)
     mqttClient.disconnect();
     stopWebServer();
 
+    // stop wemos
+    if (upnpBroadcastResponder != NULL)
+    {
+        delete upnpBroadcastResponder;
+        upnpBroadcastResponder = NULL;
+    }
+    if (wemosSwitch != NULL)
+    {
+        wemosSwitch->stop();
+        delete wemosSwitch;
+        wemosSwitch = NULL;
+    }
+
     // Local intialization. Once its business is done, there is no need to keep it around
     WiFiManager wifiManager;
     //set config save notify callback
@@ -496,10 +527,12 @@ void setupWifi(boolean useConfigPortal)
     WiFiManagerParameter mqtt_host("mqtt_host", "mqtt host", cfg_mqtt_host, 40); // id, placeholder, defaultValue, length, customAttr
     WiFiManagerParameter mqtt_port("mqtt_port", "mqtt port", cfg_mqtt_port, 6);
     WiFiManagerParameter ap_name("ap_name", "ap_name port", cfg_ap_name, 14);
+    WiFiManagerParameter wemos_name("wemos_name", "Device name", cfg_wemos_name, 20);
 
     wifiManager.addParameter(&mqtt_host);
     wifiManager.addParameter(&mqtt_port);
     wifiManager.addParameter(&ap_name);
+    wifiManager.addParameter(&wemos_name);
     wifiManager.addParameter(&custom_text);
     wifiManager.addParameter(&back_link);
 
@@ -534,6 +567,7 @@ void setupWifi(boolean useConfigPortal)
         strcpy(cfg_mqtt_host, mqtt_host.getValue());
         strcpy(cfg_mqtt_port, mqtt_port.getValue());
         strcpy(cfg_ap_name, ap_name.getValue());
+        strcpy(cfg_wemos_name, wemos_name.getValue());
 
         saveConfig();
     }

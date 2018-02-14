@@ -34,6 +34,8 @@ public:
         void respondToSearch(IPAddress& senderIP, unsigned int senderPort);
         void sendRelayState();
         void setSwitchStatus(bool status);
+        void stop();
+        void start();
 };
  
 #endif
